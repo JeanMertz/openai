@@ -27,10 +27,15 @@ pub type ChatCompletionDelta = ChatCompletionGeneric<ChatCompletionChoiceDelta>;
 
 #[derive(Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct ChatCompletionGeneric<C> {
+    #[serde(default)]
     pub id: String,
+    #[serde(default)]
     pub object: String,
+    #[serde(default)]
     pub created: u64,
+    #[serde(default)]
     pub model: String,
+    #[serde(default = "default_empty_vec")]
     pub choices: Vec<C>,
     pub usage: Option<Usage>,
 }
@@ -721,6 +726,10 @@ impl Default for ChatCompletionMessageRole {
     fn default() -> Self {
         Self::User
     }
+}
+
+fn default_empty_vec<C>() -> Vec<C> {
+    Vec::new()
 }
 
 #[cfg(test)]

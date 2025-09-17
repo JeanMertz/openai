@@ -130,6 +130,7 @@ impl ChatCompletionTool {
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
 pub enum ToolChoiceMode {
     None,
     Auto,

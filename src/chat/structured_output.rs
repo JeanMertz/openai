@@ -1,11 +1,4 @@
-use std::mem::take;
-
-use schemars::{
-    schema::{Schema, SchemaObject},
-    schema_for,
-    visit::{visit_schema_object, Visitor},
-    JsonSchema,
-};
+use schemars::{schema_for, transform::AddNullable, transform::Transform as _, JsonSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -39,7 +32,7 @@ impl ChatCompletionResponseFormatJsonSchema {
     pub fn new<T: JsonSchema>(strict: bool, json_style: JsonSchemaStyle) -> Self {
         let (schema, description) = generate_json_schema::<T>(json_style);
         ChatCompletionResponseFormatJsonSchema {
-            name: T::schema_name(),
+            name: T::schema_name().into_owned(),
             description,
             schema: Some(schema),
             strict: Some(strict),
@@ -76,14 +69,14 @@ impl ToolCallFunctionDefinition {
     /// Note: Grok tools does not support strict schema adherence, need to set `strict` to None.
     pub fn new<T: JsonSchema>(strict: Option<bool>) -> Self {
         let schema = schema_for!(T);
-        let description = if let Some(metadata) = &schema.schema.metadata {
-            metadata.description.clone()
-        } else {
-            None
-        };
+        let description = schema
+            .get("description")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+
         ToolCallFunctionDefinition {
             description,
-            name: T::schema_name(),
+            name: T::schema_name().into_owned(),
             parameters: Some(json!(schema)),
             strict,
         }
@@ -96,52 +89,19 @@ impl ToolCallFunctionDefinition {
 /// As a result, numeric type constraints (like `u8`, `i32`, etc) cannot be enforced - all integers
 /// will be treated as `i64` and all floating point numbers as `f64`.
 pub fn generate_json_schema<T: JsonSchema>(json_style: JsonSchemaStyle) -> (Value, Option<String>) {
-    let mut settings = schemars::r#gen::SchemaSettings::default();
-    settings.option_nullable = false;
+    let mut settings = schemars::generate::SchemaSettings::default();
     settings.inline_subschemas = true;
-    settings.option_add_null_type = match json_style {
-        JsonSchemaStyle::OpenAI => true,
-        JsonSchemaStyle::Grok => false,
-    };
     let mut generator = schemars::SchemaGenerator::new(settings);
-    let mut schema = T::json_schema(&mut generator).into_object();
-    let description = schema.metadata().description.clone();
-    let mut processor = SchemaPostProcessor { style: json_style };
-    processor.visit_schema_object(&mut schema);
-    let schema = serde_json::to_value(schema).expect("unreachable");
-    (schema, description)
-}
+    let mut schema = T::json_schema(&mut generator);
 
-pub struct SchemaPostProcessor {
-    pub style: JsonSchemaStyle,
-}
-
-impl Visitor for SchemaPostProcessor {
-    fn visit_schema_object(&mut self, schema: &mut SchemaObject) {
-        if let Some(sub) = &mut schema.subschemas {
-            sub.any_of = take(&mut sub.one_of);
-        }
-        schema.format = None;
-        if let Some(sub) = &mut schema.object {
-            if self.style == JsonSchemaStyle::OpenAI {
-                if sub.additional_properties.is_none() {
-                    sub.additional_properties = Some(Box::new(Schema::Bool(false)));
-                }
-                sub.required = sub.properties.keys().map(|s| s.clone()).collect();
-            }
-        }
-        if let Some(num) = &mut schema.number {
-            num.multiple_of = None;
-            num.exclusive_maximum = None;
-            num.exclusive_minimum = None;
-            num.maximum = None;
-            num.minimum = None;
-        }
-        if let Some(str) = &mut schema.string {
-            str.max_length = None;
-            str.min_length = None;
-            str.pattern = None;
-        }
-        visit_schema_object(self, schema);
+    if matches!(json_style, JsonSchemaStyle::Grok) {
+        AddNullable::default().transform(&mut schema);
     }
+
+    let description = schema
+        .get("description")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+
+    (schema.to_value(), description)
 }

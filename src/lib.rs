@@ -1,6 +1,6 @@
 use reqwest::multipart::Form;
 use reqwest::{header::AUTHORIZATION, Client, Method, RequestBuilder, Response};
-use reqwest_eventsource::{CannotCloneRequestError, EventSource, RequestBuilderExt};
+use reqwest_eventsource::{CannotCloneRequestError, EventSource, RequestBuilderExt as _};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::env;
 use std::env::VarError;
